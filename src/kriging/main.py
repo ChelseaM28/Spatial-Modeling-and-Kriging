@@ -6,7 +6,6 @@
 # * - * - * - * - * - * - * - * - * - * - * - * - * - * - * -
 
 from data_scripts.data_handling import DataHandler
-from common.base import Preprocessing
 from semivariogram import EmpiricalSemivariogram
 from kriging import OrdinaryKriging
 
@@ -14,24 +13,26 @@ class Main:
     def __init__(self, filepath):
         self.filepath = filepath
         self.datahandler = DataHandler(self.filepath)
-        self.filtered_data_object = self.datahandler.clean_filter_and_save()
-        self.kriger = None  
-        pass
 
     def main(self):
-        location_pairs = None  # Need to decide how to pair stations
-        GMM_predictions = self.filtered_data_object.construct_GMM()
-        self.preprocessor = Preprocessing(self.filtered_data_object, location_pairs, GMM_predictions)
-        self.semivari = EmpiricalSemivariogram(self.filtered_data_object)
-        self.kriger = OrdinaryKriging(self.semivari.choose_covariance_model)
-        # semivariogram global-esque variables
-        # semivariogram sources of unreliability will be handled within the variogram script.
-        
-        # station_ids = filtered_data_object['station_ids']
-        # location_pair_distances_dict = preprocessor.pairwise_distance_computation()
-        block = self.kriger.block_kriging
-        return block
+        cleaned_file = self.datahandler.clean_filter_and_save()
+        semivariogram_obj = EmpiricalSemivariogram(cleaned_file)
 
-    def LOOCV(self):
-        pass
+        semivariogram_obj.construct_location_pairs  # This updates self.location_pairs
+        semivariogram_obj.construct_GMM()  # This updates intial_PGA
+        semivariogram_obj.outliers()  # This updates outlier_treated_PGA, self.updated_location_pairs
+        semivariogram_obj.anisotropy()  # Updates PGA information once again
+
+        semivariogram_obj.compute_empirical_semivariogram() 
+       
+        cov_model = semivariogram_obj.choose_covariance_model() 
+
+        krig = OrdinaryKriging(cov_model)
+        
+        LOOCV_result = krig.LOO_cross_validation
+        
+        # Add a print statement for the LOOCV result.
+        return LOOCV_result
+
+    
         

@@ -34,7 +34,9 @@ class Preprocessing:
         # I can remove them by default for now, though 'remove by default' is not best practice.
         self.GMM_predictions = self.GMM_predictions.pop(outliers)
         # Unfortunately, the data structure is likely incorrect. Lists.. dicts... loops. Not correct yet.
-        return self.GMM_predictions  
+        
+        location_pairs = None  # Will need to update the location pairs
+        return self.GMM_predictions, location_pairs  
 
     def pairwise_distance_computation(self):
         for site_pair in self.site_pairs:
