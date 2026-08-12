@@ -11,7 +11,7 @@ import numpy as np
 import yaml
 import itertools
 from pyproj import Transformer
-from scipy.spatial.distance import pdist, squareform
+# from scipy.spatial.distance import pdist, squareform
 
 with open("config.yaml", "r") as f:
     config = yaml.safe_load(f)
@@ -40,26 +40,25 @@ class EmpiricalSemivariogram:
         self.location_pairs: list[tuple[int, int]] = []
         # This is a dict that looks like:  
         # (stationpair tuple): distance
-        self.pairwise_distances: dict[tuple[int,int],float] = {}
+        self.pairwise_distances: dict[tuple[int, int], float] = {}
 
         self.semivariogram = []  # This is the experimental variogram referenced in literature.
         self.station_variance = {}
 
         self.cov_model = None
 
-
     # @Brief: This function will take the cleaned dataframe and return location pairs and distances.
     # I enter this function with only the dataframe filtered to our target earthquake. 
     # To determine my station pairs, I need to know their lag distances. I will determine each station's 
     # distance from the earthquake (and their distances from one another) and store that information.
     # Based on the lag interval and bin width set in the config file, I may then construct my location pairs.
+   
     def construct_location_pairs(self) -> list[tuple[int, int]]:
-
         # Firstly, I'll create a dictionary of information for each station.
         station_zip: list[tuple[int, str, float, float, float]] = list(
-        zip(self.data_object['station_id_no'], self.data_object['station_name'], 
-        self.data_object['station_latitude'],self.data_object['station_longitude'], 
-        self.data_object['pga_(g)'], self.data_object['epid_(km)']))
+            zip(self.data_object['station_id_no'], self.data_object['station_name'], 
+                self.data_object['station_latitude'], self.data_object['station_longitude'], 
+                self.data_object['pga_(g)'], self.data_object['epid_(km)']))
 
         station_information: dict[int, tuple[str, float, float, float, float]] = {}
         
