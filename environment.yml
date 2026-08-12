@@ -4,7 +4,9 @@ channels:
   - conda-forge #i believe this is where python pulls packages from if doing conda installs. 
   - defaults
 dependencies:
-  - python=3.11 # I learned that in python 3.9+ type-hinting doesn't require imports
+  # I learned that in python 3.9+ type-hinting doesn't require imports. 
+  # Additionally, pyGMM requires Python 3.10+
+  - python=3.11 
   - numpy=1.26.4 #The original package specifics will be overwritten after first run
   - scipy=1.14.1
   - pandas>=2.0,<3.0
@@ -13,6 +15,12 @@ dependencies:
   - pytest
   - scikit-learn
   - pip
+  - pip:
+    - pyGMM==0.8.0
+
+
+# IF MAKING UPDATE TO THIS SCRIPT:
+# conda env update -f environment.yml --prune (to add and remove unused libraries)
 
 # EACH TIME RE-OPENING SCRIPT Aug 5, 2026
 # cd /workspaces/Spatial-Geostatistics-Analysis
@@ -30,5 +38,5 @@ dependencies:
 #these dependencies from the env file will be utilized each time the CI workflow runs.
 
 # In the case that the script needs to re-sync wth this env file at the start of running: conda env create -f environment.yml
-# Or use conda env update -f environment.yml --prune to ad and remove unused libraries
+
 # Note: spaces in this file are not standard

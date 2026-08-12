@@ -11,6 +11,8 @@ import numpy as np
 import yaml
 import itertools
 from pyproj import Transformer
+import matplotlib as plt  # Is required for the pyGMM install 
+import pygmm  # Ground motion model package
 # from scipy.spatial.distance import pdist, squareform
 
 with open("config.yaml", "r") as f:
@@ -31,6 +33,7 @@ class EmpiricalSemivariogram:
 
         self.PGA_true: dict[str, float] = {} 
         self.log_PGA_trues: dict[str, float] = {}
+        self.PGA_predicted: dict[tuple[int, int], list[float, float]] = {}
         
         self.initial_PGA: dict[str, float] = {}
         self.residuals_sum = []
@@ -72,7 +75,7 @@ class EmpiricalSemivariogram:
 
         # I will also create pairwise distances
         # I'm admittedly not very familiar with these sorts of distance calculations, so this
-        # next pairwise distance section here is moreso copy paste at the moment.
+        # next pairwise distance section here is moreso copy paste/tutorial at the moment.
         transformer = Transformer.from_crs("EPSG:4326", "EPSG:32610", always_xy=True)
  
         station_coords: dict[int, tuple[float, float]] = {}
@@ -91,12 +94,24 @@ class EmpiricalSemivariogram:
         return self.location_pairs
 
     def construct_GMM(self) -> dict[str, float]:
-        # Model construction belongs here.
-        # self.PGA_predicted for each station is updated --> given by GMM models
-        self.PGA_predicted = None 
-        # self.station_variance for each station is updated --> given by GMM models
-        self.station_variance = None 
-        self.initial_PGA = None  # Here we update self.initial_HMM so we don't have to use a non-local variable
+        # I chose to use the ChiouYoungs2014 model based on a quick trade-study-esque process
+        for station1, station2 in self.location_pairs:
+            #This is NOT ready yet. Just a draft.
+            model1 = pygmm.ChiouYoungs2014(
+                mag=None, dist_jb=None, dist_x=None, dist_rup=None, dip=None, v_s30=None)
+            model2 = pygmm.ChiouYoungs2014(
+                mag=None, dist_jb=None, dist_x=None, dist_rup=None, dip=None, v_s30=None)
+            
+            self.PGA_predicted[(station1, station2)] = [model1.pga(), model2.pga()]
+            
+            # TODO: I need to come back to this. The method will return LOG of std and 
+            # I don't want to accidentally take the log twice when I construct the semivariogram.
+            log_station_std = []  
+            log_station_std.append((model1.ln_std_pga(), model2.ln_std_pga()))
+            self.station_variance = log_station_std**2  # Likely needs element-wise operations via numpy array
+    
+        # update self.initial_PGA so I don't have to use pass a non-local variable it through main.py 
+        self.initial_PGA = None  
         return self.initial_PGA  
 
     def sample_size(self):
@@ -163,5 +178,8 @@ class PlotEmpiricalSemivariogram:  # I will figure this out later.
     def plot_empirical_semivariogram(self):
         #self.passed_to_plotting_class = some operation
         Plotting(self.passed_to_plotting_class).plot_passed_data()
+        # This fig, ax thing will be deleted. 
+        # It is to silence the flake8 linting concerns about plt not being used.
+        fig, ax = plt.subplots() 
         print("Empirical Semivariogram plotted. Check output folder > graphics for the graph.")
         pass
