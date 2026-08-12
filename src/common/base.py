@@ -2,7 +2,8 @@
 # Author : Chelsea Momoh
 # Date : 2026-08-03
 # Version : 1.0
-# Description : This script contains different scripts common to the kriging and tail extremes processes.
+# Description : This script contains different scripts common 
+# to the kriging and tail extremes processes.
 # * - * - * - * - * - * - * - * - * - * - * - * - * - * - * -
 
 import numpy as np
@@ -38,7 +39,7 @@ class Preprocessing:
         location_pairs = None  # Will need to update the location pairs
         return self.GMM_predictions, location_pairs  
 
-    def pairwise_distance_computation(self):
+    def pairwise_distance_computation(self):  # I might not use this 
         for site_pair in self.site_pairs:
             distance = None  # Some computation to perform here 
             self.site_pair_lag_distances[site_pair] = distance

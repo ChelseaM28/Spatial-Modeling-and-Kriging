@@ -35,12 +35,14 @@ class DataHandler:
     def save_cleaned_to_json(self):
         self.dataframe.to_json(self.output_path + "/cleaned_data.json", orient='records', lines=True)
     
+    # @Brief: This function will find the earthquake that has been captured by the most stations.
+    # It will return the earthquake ID and the number of stations reporting data.
     def filter_to_earthquake(self):
-        # This function will find the earthquake with the most stations reporting data.
-        # It will return the earthquake ID and the number of stations reporting data.
         counts = self.dataframe.groupby('earthquake_name')['station_id_no.'].count()
-        best_earthquake = counts.idxmax()  # I use station IDs because they are simple to parse and unique.
-        self.dataframe = self.dataframe[(self.dataframe['earthquae_name'] == str(best_earthquake))]
+        # If multiple values share the maximum count, idxmax() returns only the first occurrence.
+        # So to ensure reproducibility, I sort the indices.
+        best_earthquake = counts.sort_index().idxmax()  # I use station IDs because they are simple to parse and unique.
+        self.dataframe = self.dataframe[(self.dataframe['earthquake_name'] == str(best_earthquake))]
         self.filtered = self.dataframe
         return self.filtered
 

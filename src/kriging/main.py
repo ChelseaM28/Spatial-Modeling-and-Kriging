@@ -10,7 +10,7 @@ from semivariogram import EmpiricalSemivariogram
 from kriging import OrdinaryKriging
 
 class Main:
-    def __init__(self, filepath):
+    def __init__(self, filepath: str):
         self.filepath = filepath
         self.datahandler = DataHandler(self.filepath)
 
@@ -18,7 +18,7 @@ class Main:
         cleaned_file = self.datahandler.clean_filter_and_save()
         semivariogram_obj = EmpiricalSemivariogram(cleaned_file)
 
-        semivariogram_obj.construct_location_pairs  # This updates self.location_pairs
+        semivariogram_obj.construct_location_pairs()  # This updates self.location_pairs
         semivariogram_obj.construct_GMM()  # This updates intial_PGA
         semivariogram_obj.outliers()  # This updates outlier_treated_PGA, self.updated_location_pairs
         semivariogram_obj.anisotropy()  # Updates PGA information once again

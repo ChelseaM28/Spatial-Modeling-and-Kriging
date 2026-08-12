@@ -1,2 +1,15 @@
-# It there any values that affect the analysis/test I run, I should define them here.
-# However, I'm not quite there yet. 
+# Filename : config.yaml
+# Author : Chelsea Momoh
+# Date : 2026-11-03
+# Version : 1.0
+# Description : This script will contain all configurations for analyses.
+# * - * - * - * - * - * - * - * - * - * - * - * - * - * - * -
+
+
+---
+# Firstly, lag interval and bin width.
+
+lag_interval: null
+bin_width: null
+
+...

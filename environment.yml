@@ -4,7 +4,7 @@ channels:
   - conda-forge #i believe this is where python pulls packages from if doing conda installs. 
   - defaults
 dependencies:
-  - python=3.11 #these are the packages (i usually call them libraries) the project will need
+  - python=3.11 # I learned that in python 3.9+ type-hinting doesn't require imports
   - numpy=1.26.4 #The original package specifics will be overwritten after first run
   - scipy=1.14.1
   - pandas>=2.0,<3.0

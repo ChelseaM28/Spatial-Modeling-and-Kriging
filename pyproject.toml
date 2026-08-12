@@ -1,3 +1,4 @@
+# filename: pyproject.toml
 # This file should define where to find files, especially useful for cross-project module imports
 [build-system]
 requires = ["setuptools>=61.0"]
