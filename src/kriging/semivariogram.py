@@ -7,6 +7,7 @@
 # * - * - * - * - * - * - * - * - * - * - * - * - * - * - * -
 
 from common.base import Plotting, Preprocessing
+from pathlib import Path
 import numpy as np
 import yaml
 import itertools
@@ -15,7 +16,10 @@ import matplotlib as plt  # Is required for the pyGMM install
 import pygmm  # Ground motion model package
 # from scipy.spatial.distance import pdist, squareform
 
-with open("config.yaml", "r") as f:
+
+config_path = Path(__file__).resolve().parent.parent.parent / "config" / "config.yaml"
+
+with open(config_path, "r") as f:
     config = yaml.safe_load(f)
 
 # I am using peak ground acceleration as my parameter of interest with the 
@@ -46,15 +50,15 @@ class EmpiricalSemivariogram:
         self.pairwise_distances: dict[tuple[int, int], float] = {}
 
         self.semivariogram = []  # This is the experimental variogram referenced in literature.
-        self.station_variance = {}
+        self.station_variance: dict[tuple[int, int], list[float, float]] = {}
 
         self.cov_model = None
 
     # @Brief: This function will take the cleaned dataframe and return location pairs and distances.
     # I enter this function with only the dataframe filtered to our target earthquake. 
-    # To determine my station pairs, I need to know their lag distances. I will determine each station's 
-    # distance from the earthquake (and their distances from one another) and store that information.
-    # Based on the lag interval and bin width set in the config file, I may then construct my location pairs.
+    # I will determine each station's distance from the earthquake (and their distances from one another)
+    # and store that information. Based on the lag interval and bin width set in the config file, I may 
+    # then construct my location pairs.
    
     def construct_location_pairs(self) -> list[tuple[int, int]]:
         # Firstly, I'll create a dictionary of information for each station.
@@ -80,6 +84,7 @@ class EmpiricalSemivariogram:
  
         station_coords: dict[int, tuple[float, float]] = {}
         for station_id, info in station_information.items():
+            # TODO: Need to update this.
             # info = (station_name, station_latitude, station_longitude, pga_(g), epid_(km))
             lat, lon = info[1], info[2]
             easting, northing = transformer.transform(lon, lat)
@@ -95,23 +100,59 @@ class EmpiricalSemivariogram:
 
     def construct_GMM(self) -> dict[str, float]:
         # I chose to use the ChiouYoungs2014 model based on a quick trade-study-esque process
+        station_params = {}
+        for station in self.station_ids:  # This seems a little wasteful. There has to be a better method. 
+            station_params[station] = [
+                self.data_object.loc[['station_id_no'] == station, ['earthquake_magnitude']], 
+                self.data_object.loc[['station_id_no'] == station, ['joyner-boore_dist._(km)']], 
+                self.data_object.loc[['station_id_no'] == station, ['rx']], 
+                self.data_object.loc[['station_id_no'] == station, ['dist_rup']], 
+                self.data_object.loc[['station_id_no'] == station, ['dip']], 
+                self.data_object.loc[['station_id_no'] == station, ['vs30_(m/s)_selected_for_analysis']]
+                ]
+       
+        # TODO: I don't need to find PGA for each station pair repeatedly. I can find PGA for each station 
+        # and store them, assigning PGA back to the station once the algorithms comes across it again.
+        # This would be more efficient, and I should return here to improve the code when there's time.
+        
         for station1, station2 in self.location_pairs:
             #This is NOT ready yet. Just a draft.
             model1 = pygmm.ChiouYoungs2014(
-                mag=None, dist_jb=None, dist_x=None, dist_rup=None, dip=None, v_s30=None)
+                mag=station_params[station1][0], 
+                dist_jb=station_params[station1][1], 
+                dist_x=station_params[station1][2], 
+                dist_rup=station_params[station1][3], 
+                dip=station_params[station1][4], 
+                v_s30=station_params[station1][5])
+
             model2 = pygmm.ChiouYoungs2014(
-                mag=None, dist_jb=None, dist_x=None, dist_rup=None, dip=None, v_s30=None)
+                mag=station_params[station2][0], 
+                dist_jb=station_params[station2][1], 
+                dist_x=station_params[station2][2], 
+                dist_rup=station_params[station2][3], 
+                dip=station_params[station2][4], 
+                v_s30=station_params[station2][5])
             
-            self.PGA_predicted[(station1, station2)] = [model1.pga(), model2.pga()]
+            self.initial_PGA[(station1, station2)] = [model1.pga(), model2.pga()]
             
             # TODO: I need to come back to this. The method will return LOG of std and 
             # I don't want to accidentally take the log twice when I construct the semivariogram.
             log_station_std = []  
-            log_station_std.append((model1.ln_std_pga(), model2.ln_std_pga()))
-            self.station_variance = log_station_std**2  # Likely needs element-wise operations via numpy array
-    
-        # update self.initial_PGA so I don't have to use pass a non-local variable it through main.py 
-        self.initial_PGA = None  
+            
+            # I use a list instead of a tuple because I don't think ndarray will handl tuples properly.
+            log_station_std.append([model1.ln_std_pga(), model2.ln_std_pga()])  
+        
+        # I tested, this squares each element despite it being a multi dimensional array.
+        log_station_var = np.array(log_station_std)**2 
+        for index, tuple in enumerate(log_station_var):
+            self.station_variance[tuple] = log_station_var[index]   
+            '''
+            the enumerate transforms the list to this format:
+            0 [var1, var2]
+            1 [var1, var2]
+            2 [var1, var2]
+            So i can refereance each pair by its index
+            '''          
         return self.initial_PGA  
 
     def sample_size(self):

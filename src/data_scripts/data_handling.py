@@ -21,8 +21,9 @@ class DataHandler:
         self.dataframe.columns = self.dataframe.columns.str.strip().str.lower().str.replace(' ', '_', regex=True)   
         self.dataframe = self.dataframe.astype(
             {'earthquake_name': str, 'station_name': str, 'station_id_no.': str, 
-            'station_latitude': float, 'station_longitude': float,
-            'epid_(km)': float, 'pga_(g)': float}
+            'station_latitude': float, 'station_longitude': float, 'joyner-boore_dist._(km)': float,
+            'rx': float, 'dip_(deg)': float, 'earthquake_magnitude': float, 'magnitude_type': str,
+            'vs30_(m/s)_selected_for_analysis': float, 'epid_(km)': float, 'pga_(g)': float}
             )  # EpiD is 'epicenter distance.' 
         # I believe these are all the columns I need, though I may update it.
         return self.dataframe
@@ -31,7 +32,7 @@ class DataHandler:
         self.tested_cleaned_data = self.clean_data(self.mini_dataframe)
         # This will print, in terminal, about 10 rows of the dataframe after a test cleaning process.
         print(f"Cleaned First Ten Rows of Dataset. \noriginal dataset is unmodified:\n{self.tested_cleaned_data}")
-    
+        return tested_cleaned_data
     def save_cleaned_to_json(self):
         self.dataframe.to_json(self.output_path + "/cleaned_data.json", orient='records', lines=True)
     
@@ -41,6 +42,9 @@ class DataHandler:
         counts = self.dataframe.groupby('earthquake_name')['station_id_no.'].count()
         # If multiple values share the maximum count, idxmax() returns only the first occurrence.
         # So to ensure reproducibility, I sort the indices.
+
+        # I need to ensure I am getting moment magnitude and not some other random magnitude.
+        self.dataframe = self.dataframe.loc[self.dataframe['magnitude_type'] == 'Mw']  # Need a case-insensitive method.
         best_earthquake = counts.sort_index().idxmax()  # I use station IDs because they are simple to parse and unique.
         self.dataframe = self.dataframe[(self.dataframe['earthquake_name'] == str(best_earthquake))]
         self.filtered = self.dataframe
@@ -48,6 +52,7 @@ class DataHandler:
 
     def save_filtered_to_json(self):
         self.filtered.to_json(self.output_path + "/filtered_data.json", orient='records', lines=True)
+
 
     def clean_filter_and_save(self):
         self.dataframe = self.clean_data(self.dataframe)

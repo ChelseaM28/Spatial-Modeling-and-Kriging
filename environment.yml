@@ -10,6 +10,9 @@ dependencies:
   - numpy=1.26.4 #The original package specifics will be overwritten after first run
   - scipy=1.14.1
   - pandas>=2.0,<3.0
+  - pathlib
+  - pyyaml
+  - pyproj
   - matplotlib
   - flake8
   - pytest
