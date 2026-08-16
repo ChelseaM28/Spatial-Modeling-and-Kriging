@@ -44,7 +44,6 @@ class EmpiricalSemivariogram:
         self.outlier_treated_PGA: dict[str, float] = {}
         self.anisotropy_treated_PGA: dict[str, float] = {}
 
-        
         self.location_pairs: list[tuple[str]] = []
         # This is a dict that looks like:  
         # (stationpair tuple): distance
