@@ -44,13 +44,15 @@ class EmpiricalSemivariogram:
         self.outlier_treated_PGA: dict[str, float] = {}
         self.anisotropy_treated_PGA: dict[str, float] = {}
 
-        self.location_pairs: list[tuple[int, int]] = []
+        
+        self.location_pairs: list[tuple[str]] = []
         # This is a dict that looks like:  
         # (stationpair tuple): distance
-        self.pairwise_distances: dict[tuple[int, int], float] = {}
+        self.pairwise_distances: dict[tuple[str, str], float] = {}
+        self.station_ids = []
 
         self.semivariogram = []  # This is the experimental variogram referenced in literature.
-        self.station_variance: dict[tuple[int, int], list[float, float]] = {}
+        self.station_variance: dict[tuple[str, str], list[float, float]] = {}
 
         self.cov_model = None
 
@@ -63,7 +65,7 @@ class EmpiricalSemivariogram:
     def construct_location_pairs(self) -> list[tuple[int, int]]:
         # Firstly, I'll create a dictionary of information for each station.
         station_zip: list[tuple[int, str, float, float, float]] = list(
-            zip(self.data_object['station_id_no'], self.data_object['station_name'], 
+            zip(self.data_object['station_id__no.'], self.data_object['station_name'], 
                 self.data_object['station_latitude'], self.data_object['station_longitude'], 
                 self.data_object['pga_(g)'], self.data_object['epid_(km)']))
 
@@ -73,8 +75,8 @@ class EmpiricalSemivariogram:
             station_information[entry[0]] = entry[1:]
         
         # Next, I will group all station pairs. There should be no self pairs
-        station_ids = self.data_object['station_id_no']
-        for station_1, station_2 in itertools.combinations(station_ids, 2):
+        self.station_ids = list(self.data_object['station_id__no.'])
+        for station_1, station_2 in itertools.combinations(self.station_ids, 2):
             self.location_pairs.append((station_1, station_2))
 
         # I will also create pairwise distances
@@ -103,12 +105,12 @@ class EmpiricalSemivariogram:
         station_params = {}
         for station in self.station_ids:  # This seems a little wasteful. There has to be a better method. 
             station_params[station] = [
-                self.data_object.loc[['station_id_no'] == station, ['earthquake_magnitude']], 
-                self.data_object.loc[['station_id_no'] == station, ['joyner-boore_dist._(km)']], 
-                self.data_object.loc[['station_id_no'] == station, ['rx']], 
-                self.data_object.loc[['station_id_no'] == station, ['dist_rup']], 
-                self.data_object.loc[['station_id_no'] == station, ['dip']], 
-                self.data_object.loc[['station_id_no'] == station, ['vs30_(m/s)_selected_for_analysis']]
+                self.data_object.loc[['station_id__no.'] == station, ['earthquake_magnitude']], 
+                self.data_object.loc[['station_id__no.'] == station, ['joyner-boore_dist._(km)']], 
+                self.data_object.loc[['station_id__no.'] == station, ['rx']], 
+                self.data_object.loc[['station_id__no.'] == station, ['dist_rup']], 
+                self.data_object.loc[['station_id__no.'] == station, ['dip']], 
+                self.data_object.loc[['station_id__no.'] == station, ['vs30_(m/s)_selected_for_analysis']]
                 ]
        
         # TODO: I don't need to find PGA for each station pair repeatedly. I can find PGA for each station 
@@ -152,7 +154,8 @@ class EmpiricalSemivariogram:
             1 [var1, var2]
             2 [var1, var2]
             So i can refereance each pair by its index
-            '''          
+            '''   
+        print(list(self.initial_PGA.keys()[:4]))       
         return self.initial_PGA  
 
     def sample_size(self):

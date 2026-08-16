@@ -10,17 +10,18 @@ import pandas as pd
 class DataHandler:
     def __init__(self, filepath):
         self.filepath = filepath
-        self.dataframe = pd.read_csv(filepath)
+        self.dataframe = pd.read_csv(filepath, low_memory=False)
         self.mini_dataframe = self.dataframe.head(10)
         self.filtered = None
         self.output_path = "/workspaces/Spatial-Geostatistics-Analysis/data/raw/processed"
 
     def clean_data(self, dataframe):
         # Figure how to handle missing data and data types. No outlier detection in this step.
-        self.dataframe = self.dataframe.dropna()
+        self.dataframe = dataframe.dropna()
         self.dataframe.columns = self.dataframe.columns.str.strip().str.lower().str.replace(' ', '_', regex=True)   
+        print("ACTUAL COLUMNS:", self.dataframe.columns.tolist()[15])
         self.dataframe = self.dataframe.astype(
-            {'earthquake_name': str, 'station_name': str, 'station_id_no.': str, 
+            {'earthquake_name': str, 'station_name': str, 'station_id__no.': str, 
             'station_latitude': float, 'station_longitude': float, 'joyner-boore_dist._(km)': float,
             'rx': float, 'dip_(deg)': float, 'earthquake_magnitude': float, 'magnitude_type': str,
             'vs30_(m/s)_selected_for_analysis': float, 'epid_(km)': float, 'pga_(g)': float}
@@ -32,14 +33,16 @@ class DataHandler:
         self.tested_cleaned_data = self.clean_data(self.mini_dataframe)
         # This will print, in terminal, about 10 rows of the dataframe after a test cleaning process.
         print(f"Cleaned First Ten Rows of Dataset. \noriginal dataset is unmodified:\n{self.tested_cleaned_data}")
-        return tested_cleaned_data
+        print(f"Data columns: {self.tested_cleaned_data.columns}")
+        return self.tested_cleaned_data
+
     def save_cleaned_to_json(self):
         self.dataframe.to_json(self.output_path + "/cleaned_data.json", orient='records', lines=True)
     
     # @Brief: This function will find the earthquake that has been captured by the most stations.
     # It will return the earthquake ID and the number of stations reporting data.
     def filter_to_earthquake(self):
-        counts = self.dataframe.groupby('earthquake_name')['station_id_no.'].count()
+        counts = self.dataframe.groupby('earthquake_name')['station_id__no.'].count()
         # If multiple values share the maximum count, idxmax() returns only the first occurrence.
         # So to ensure reproducibility, I sort the indices.
 
@@ -52,7 +55,6 @@ class DataHandler:
 
     def save_filtered_to_json(self):
         self.filtered.to_json(self.output_path + "/filtered_data.json", orient='records', lines=True)
-
 
     def clean_filter_and_save(self):
         self.dataframe = self.clean_data(self.dataframe)
