@@ -23,5 +23,8 @@ Baker, Jack, and Nirmal Jayaram. Rep. EFFECTS OF SPATIAL CORRELATION OF GROUND M
        MULTI-SITE SEISMIC RISK ASSESSMENT. USGS, 2008. 
 
 ---
+PyGMM Documentaion
+https://pygmm.readthedocs.io/models.html
+---
 Chelsea Momoh
 Statistics, UC Davis 

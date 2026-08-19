@@ -97,64 +97,65 @@ class EmpiricalSemivariogram:
         for station1, station2 in self.location_pairs:
             distance = pairwise_distance(station_coords[station1], station_coords[station2])
             self.pairwise_distances[(station1, station2)] = distance
+        print(f"Some location Pairs: {self.location_pairs[:5]}")
         return self.location_pairs
 
     def construct_GMM(self) -> dict[str, float]:
         # I chose to use the ChiouYoungs2014 model based on a quick trade-study-esque process
         station_params = {}
-        for station in self.station_ids:  # This seems a little wasteful. There has to be a better method. 
+        vs30 = 'vs30_(m/s)_selected_for_analysis'
+        for station in self.station_ids: 
             station_params[station] = [
-                self.data_object.loc[['station_id__no.'] == station, ['earthquake_magnitude']], 
-                self.data_object.loc[['station_id__no.'] == station, ['joyner-boore_dist._(km)']], 
-                self.data_object.loc[['station_id__no.'] == station, ['rx']], 
-                self.data_object.loc[['station_id__no.'] == station, ['dist_rup']], 
-                self.data_object.loc[['station_id__no.'] == station, ['dip']], 
-                self.data_object.loc[['station_id__no.'] == station, ['vs30_(m/s)_selected_for_analysis']]
+                self.data_object.loc[self.data_object['station_id__no.'] == station, 'earthquake_magnitude'].iloc[0], 
+                self.data_object.loc[self.data_object['station_id__no.'] == station, 'joyner-boore_dist._(km)'].iloc[0], 
+                self.data_object.loc[self.data_object['station_id__no.'] == station, 'rx'].iloc[0], 
+                # distance from rupture plane chosen as ClstD_(km), i assumed this was what it meant
+                self.data_object.loc[self.data_object['station_id__no.'] == station, 'clstd_(km)'].iloc[0],   
+                self.data_object.loc[self.data_object['station_id__no.'] == station, 'dip_(deg)'].iloc[0], 
+                self.data_object.loc[self.data_object['station_id__no.'] == station, vs30].iloc[0]
                 ]
        
-        # TODO: I don't need to find PGA for each station pair repeatedly. I can find PGA for each station 
-        # and store them, assigning PGA back to the station once the algorithms comes across it again.
-        # This would be more efficient, and I should return here to improve the code when there's time.
-        
-        for station1, station2 in self.location_pairs:
-            #This is NOT ready yet. Just a draft.
-            model1 = pygmm.ChiouYoungs2014(
-                mag=station_params[station1][0], 
-                dist_jb=station_params[station1][1], 
-                dist_x=station_params[station1][2], 
-                dist_rup=station_params[station1][3], 
-                dip=station_params[station1][4], 
-                v_s30=station_params[station1][5])
+    # Save one fitted model per station, since the same station appears in multiple pairs
+    # and the scenario/model construction is otherwise repeated unnecessarily. This fixes the todo.
+        station_models: dict[str, pygmm.ChiouYoungs2014] = {}
 
-            model2 = pygmm.ChiouYoungs2014(
-                mag=station_params[station2][0], 
-                dist_jb=station_params[station2][1], 
-                dist_x=station_params[station2][2], 
-                dist_rup=station_params[station2][3], 
-                dip=station_params[station2][4], 
-                v_s30=station_params[station2][5])
-            
-            self.initial_PGA[(station1, station2)] = [model1.pga(), model2.pga()]
-            
-            # TODO: I need to come back to this. The method will return LOG of std and 
-            # I don't want to accidentally take the log twice when I construct the semivariogram.
-            log_station_std = []  
-            
+        def get_model(station):
+            if station not in station_models:
+                scenario = pygmm.Scenario(  # See the docs. PyGMM now takes a single 'scenario' parameter 
+                    mag=station_params[station][0],
+                    dist_jb=station_params[station][1],
+                    dist_x=station_params[station][2],
+                    dist_rup=station_params[station][3],
+                    dip=station_params[station][4],
+                    v_s30=station_params[station][5])
+                station_models[station] = pygmm.ChiouYoungs2014(scenario)
+            return station_models[station]
+
+        log_station_std = []
+        for station1, station2 in self.location_pairs:
+            model1 = get_model(station1)
+            model2 = get_model(station2)
+            self.initial_PGA[(station1, station2)] = [model1.pga, model2.pga]
             # I use a list instead of a tuple because I don't think ndarray will handl tuples properly.
-            log_station_std.append([model1.ln_std_pga(), model2.ln_std_pga()])  
+            log_station_std.append([model1.ln_std_pga, model2.ln_std_pga])
+
+        print("\n\nCOMPLETED RUNNING GMM MODEL.")
+
+        log_station_var = np.array(log_station_std) ** 2
         
-        # I tested, this squares each element despite it being a multi dimensional array.
-        log_station_var = np.array(log_station_std)**2 
-        for index, tuple in enumerate(log_station_var):
-            self.station_variance[tuple] = log_station_var[index]   
+        for index, (station1, station2) in enumerate(self.location_pairs):
+            self.station_variance[(station1, station2)] = log_station_var[index]
             '''
             the enumerate transforms the list to this format:
             0 [var1, var2]
             1 [var1, var2]
             2 [var1, var2]
-            So i can refereance each pair by its index
-            '''   
-        print(list(self.initial_PGA.keys()[:4]))       
+            So i can reference each pair by its index to get
+            0 [var1^2, var2^2], etc.
+            '''
+
+        print(f"Initial PGA Keys:\n{list(self.initial_PGA.keys())[:4]}")
+        print(f"Initial PGA:\n{list(self.initial_PGA.values())[:4]}")
         return self.initial_PGA  
 
     def sample_size(self):
@@ -164,6 +165,7 @@ class EmpiricalSemivariogram:
         pass
 
     def marginal_distribution(self):
+        # I will not be implementing this one, though i leave this here for future improvements.
         pass
 
     def outliers(self) -> tuple[dict[str, float], list[tuple[str, str]]]:
@@ -190,10 +192,10 @@ class EmpiricalSemivariogram:
             log_PGA_predicted_station1 = np.log(self.anisotropy_treated_PGA[station_1])
             log_PGA_predicted_station2 = np.log(self.anisotropy_treated_PGA[station_2])
             
-            self.residuals_sum.append(
-                ((self.log_PGA_true[station_1]-log_PGA_predicted_station1)/self.station_variance[station_1]), 
-                ((self.log_PGA_true[station_2]-log_PGA_predicted_station2)/self.station_variance[station_2])
-                )
+            self.residuals_sum.append((
+                ((self.log_PGA_trues[station_1]-log_PGA_predicted_station1)/self.station_variance[station_1]), 
+                ((self.log_PGA_trues[station_2]-log_PGA_predicted_station2)/self.station_variance[station_2])
+                ))
         # I need to check when this one is supposed to be used.
         self.semivariogram = None
         return self.semivariogram

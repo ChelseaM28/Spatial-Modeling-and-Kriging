@@ -10,6 +10,7 @@
 # flake8 src
 # to test: 
 # pytest
+# pytest -s
 
 import unittest
 from pathlib import Path
@@ -46,7 +47,8 @@ class SemivariogramCheck(EmpiricalSemivariogram):
 def test_construct_location_pairs():
     location_checker = SemivariogramCheck()
     assert len(location_checker.construct_location_pairs()) > 4
-    
+    assert len(location_checker.construct_GMM()) > 4
+
 '''def test_construct_GMM():
     gmm_checker = SemivariogramCheck()
     initial_PGA_keys = gmm_checker.construct_GMM()

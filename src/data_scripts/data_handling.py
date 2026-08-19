@@ -23,7 +23,7 @@ class DataHandler:
         self.dataframe = self.dataframe.astype(
             {'earthquake_name': str, 'station_name': str, 'station_id__no.': str, 
             'station_latitude': float, 'station_longitude': float, 'joyner-boore_dist._(km)': float,
-            'rx': float, 'dip_(deg)': float, 'earthquake_magnitude': float, 'magnitude_type': str,
+            'rx': float, 'clstd_(km)': float, 'dip_(deg)': float, 'earthquake_magnitude': float, 'magnitude_type': str,
             'vs30_(m/s)_selected_for_analysis': float, 'epid_(km)': float, 'pga_(g)': float}
             )  # EpiD is 'epicenter distance.' 
         # I believe these are all the columns I need, though I may update it.
