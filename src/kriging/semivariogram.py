@@ -8,8 +8,10 @@
 
 from common.base import Plotting, Preprocessing
 from pathlib import Path
+from scipy.optimize import curve_fit
 import numpy as np
 import yaml
+#import math
 import itertools
 from pyproj import Transformer
 import matplotlib as plt  # Is required for the pyGMM install 
@@ -115,8 +117,8 @@ class EmpiricalSemivariogram:
                 self.data_object.loc[self.data_object['station_id__no.'] == station, vs30].iloc[0]
                 ]
        
-    # Save one fitted model per station, since the same station appears in multiple pairs
-    # and the scenario/model construction is otherwise repeated unnecessarily. This fixes the todo.
+        # Save one fitted model per station, since the same station appears in multiple pairs
+        # and the scenario/model construction is otherwise repeated unnecessarily. This fixes the todo.
         station_models: dict[str, pygmm.ChiouYoungs2014] = {}
 
         def get_model(station):
@@ -159,13 +161,15 @@ class EmpiricalSemivariogram:
         return self.initial_PGA  
 
     def sample_size(self):
+        # This will not be checked in v1
         pass
         
     def lag_interval_and_bin_width(self):
         pass
 
     def marginal_distribution(self):
-        # I will not be implementing this one, though i leave this here for future improvements.
+        # I will not be implementing this one in V1, 
+        # though i leave this here for future improvements.
         pass
 
     def outliers(self) -> tuple[dict[str, float], list[tuple[str, str]]]:
@@ -174,43 +178,133 @@ class EmpiricalSemivariogram:
             self.data_object, self.location_pairs, self.initial_PGA
             )
         # NOTE: This is already a function in the preprocessing class. 
+        # However, I might be moving the code here instead and getting rid of 
+        # the preprocessing class. Need to think of downstream effects of this though.
         return self.outlier_treated_PGA, self.location_pairs
 
     def anisotropy(self):
         # Be sure to use outlier_treated_PGA
+        # though the semivariograms in MY literature are assumed (and proven) to be isotropic
         return self.anisotropy_treated_PGA
 
     def trend(self):
+        # This will also not be checked in v1
         pass
 
-    def compute_empirical_semivariogram(self): 
+    def compute_empirical_semivariogram(self):
         # Be sure to use anisotropy_treated_PGA values
+        # Bins are centered at multiples of self.lag_interval (h), each with
+        # half-width self.bin_width / 2 (δh/2), per Baker eq. 4 / bin definition.
 
-        # Now I need ε˜, "the sum of the intra-event residual (εi) and inter-event residual (η) 
-        # normalized by the standard deviation of the intra-event residual (σi).
+        # Assign each pair to the nearest lag center, if it falls within that bin.
+        lag_groups: dict[float, list[tuple[str, str]]] = {}
+        half_width = self.bin_width / 2
+
         for station_1, station_2 in self.location_pairs:
-            log_PGA_predicted_station1 = np.log(self.anisotropy_treated_PGA[station_1])
-            log_PGA_predicted_station2 = np.log(self.anisotropy_treated_PGA[station_2])
-            
-            self.residuals_sum.append((
-                ((self.log_PGA_trues[station_1]-log_PGA_predicted_station1)/self.station_variance[station_1]), 
-                ((self.log_PGA_trues[station_2]-log_PGA_predicted_station2)/self.station_variance[station_2])
+            distance = self.pairwise_distances[(station_1, station_2)]
+
+            # how many lag intervals fit into this distance
+            nearest_multiple = round(distance / self.lag_interval)
+            # assign this pair to a lag distance by snapping to the rounded value
+            lag_center = nearest_multiple * self.lag_interval  # will = 2 in config. from lit.
+
+            # if the station is within specified width
+            if abs(distance - lag_center) <= half_width:
+                ''' What setdefault does:
+                if lag_center not in lag_groups:
+                    lag_groups[lag_center] = []
+                    lag_groups[lag_center].append((station_1, station_2))
+                '''
+                lag_groups.setdefault(lag_center, []).append((station_1, station_2))
+            # else: distance falls in the gap between bins (possible when bin_width < lag_interval)
+            # and is simply not used in any semivariogram point, per the paper's definition.
+
+        # Step 2: compute semivari(h) for each lag bin independently.
+        self.semivariogram = []
+        for lag_distance, location_pairs_lagged in sorted(lag_groups.items()):
+            residuals_sum = []  # local to this lag, not self.residuals_sum
+            for station_1, station_2 in location_pairs_lagged:
+                log_PGA_predicted_station1 = np.log(self.anisotropy_treated_PGA[station_1])
+                log_PGA_predicted_station2 = np.log(self.anisotropy_treated_PGA[station_2])
+
+                residuals_sum.append((
+                    (self.log_PGA_trues[station_1] - log_PGA_predicted_station1) / self.station_variance[station_1],
+                    (self.log_PGA_trues[station_2] - log_PGA_predicted_station2) / self.station_variance[station_2]
                 ))
-        # I need to check when this one is supposed to be used.
-        self.semivariogram = None
+
+            sqrd_differences = [
+                (residual_1 - residual_2) ** 2
+                for residual_1, residual_2 in residuals_sum
+            ]
+
+            # Baker eq. 4: semivari(h) = 1 / (2*N(h)) * sum[z_u - z_u+h]^2
+            N = len(location_pairs_lagged)  # number of pairs AT THIS LAG DISTANCE
+            if N == 0:
+                continue
+            sum_sqrd_differences = sum(sqrd_differences)
+            gamma_h = (1 / (2 * N)) * sum_sqrd_differences
+
+            self.semivariogram.append((lag_distance, gamma_h, N))
+
         return self.semivariogram
 
-    # methods for fitting a covariance model to the semivariogram via WLS.
-    def spherical_model(self):
-        pass
-    
-    def exponential_model(self):
-        pass
+    def sill_and_range(self):
+        lags = np.array([point[0] for point in self.semivariogram])
+        gammas = np.array([point[1] for point in self.semivariogram])
+        Ns = np.array([point[2] for point in self.semivariogram])
+
+        weights = Ns / lags**2          # Cressie-style WLS weights
+        sigma = 1 / np.sqrt(weights)    # curve_fit wants sigma, not weight, so invert
+
+        # initial guesses: a ~ sill ~ variance of Z_u; b ~ range ~ some fraction of max lag
+        # a0: rough guess at Var(Z_u), used to seed the sill.
+        # b0: rough guess at decay distance, used to seed the range before curve fit.
+        a0 = np.var(list(self.anisotropy_treated_PGA.values()))
+        b0 = lags.max() / 3
+
+        (a_fit, b_fit), _ = curve_fit(
+            self.exponential_model, lags, gammas,
+            p0=[a0, b0], sigma=sigma, absolute_sigma=False
+        )
+
+        self.cov_model = {'a': a_fit, 'b': b_fit}
+        return a_fit, b_fit
+
+    # semivariogram functional forms to create "a CONTINUOUS function... fitted [on the finite]
+    # experimental values in order to deduce variogram values for any possible separation h."
+    # The literature notes that the best choice can be chosen visually.
+    # For now, I will start with one model only.
+
+    def exponential_model(self, h, a, b):
+        # ISOTROPIC CASE:
+        # semivari(h) = a[1 - exp(-3h/b)]
+        # a - sill (also known as the variance of Z_u, aka station 1 (NOT Z_u+h))
+        # b - range (also the h at which semivari = .95 times sill of exponential semivari)
+        return a * (1 - np.exp(-3 * h / b))
 
     def power_empirical_model(self):
+        # Will be skipped.
         pass
+    
+    def spherical_model(self):
+        # Used for isotropic case (direction has no effect on semivari)
+        #Will be skipped for now.
+        pass
+    # methods for fitting a covariance model to the semivariogram via WLS.
+    
+    # TODO: Think about how i will need to eventually restructure main.py. Should
+    # I even have a choose_cov_model separate from teh sill_and_range() functions?
+    # Maybe sillandrange should instead be called choose_cov_model? 
+    # And how will future users have optionality in the config in terms of choosing the 
+    # functional form of the model? Perhaps I need a structure where the config also allows
+    # the functional form to be chosen, not just lag distance and bin width!!
 
     def choose_covariance_model(self, semivar_values):
+        # "The covariance structure of Z (location realizations) is completely specified by the 
+        # semivariogram function and the sill and the range of the semivariogram." Baker Pg 8
+        # semivari = a(1 - p(h))
+        # a - sill
+        # p(h) - correlation coefficient between Z_u and Z_u+h (location 1 and location 2) 
         self.cov_model = None
         pass
 

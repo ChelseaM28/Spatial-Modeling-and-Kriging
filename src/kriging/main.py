@@ -20,6 +20,8 @@ class Main:
 
         semivariogram_obj.construct_location_pairs()  # This updates self.location_pairs
         semivariogram_obj.construct_GMM()  # This updates intial_PGA
+        # These 2 methods may not be removed, as the code depends on the values of these
+        # functions which update in this expected order. 
         semivariogram_obj.outliers()  # This updates outlier_treated_PGA, self.updated_location_pairs
         semivariogram_obj.anisotropy()  # Updates PGA information once again
 

@@ -22,7 +22,7 @@ from data_scripts.data_handling import DataHandler
 data_path = Path(__file__).resolve().parent.parent / "data" / "original.csv"
 columns = ['earthquake_name', 'station_name', 'station_id__no.', 
             'station_latitude', 'station_longitude', 'joyner-boore_dist._(km)',
-            'rx', 'dip_(deg)', 'earthquake_magnitude', 'magnitude_type',
+            'rx', 'clstd_(km)', 'dip_(deg)', 'earthquake_magnitude', 'magnitude_type',
             'vs30_(m/s)_selected_for_analysis', 'epid_(km)', 'pga_(g)'] 
 
 class DataHandlingCheck(DataHandler):
@@ -44,10 +44,13 @@ class SemivariogramCheck(EmpiricalSemivariogram):
     def __init__(self):
         super().__init__(clean_data) 
 
-def test_construct_location_pairs():
+def test_semivariogram():
     location_checker = SemivariogramCheck()
     assert len(location_checker.construct_location_pairs()) > 4
+    # or maybe test for no negative PGA values or some other value checker
     assert len(location_checker.construct_GMM()) > 4
+    # Then assert outliers ... 
+    # Then assert empirical semivariogram...
 
 '''def test_construct_GMM():
     gmm_checker = SemivariogramCheck()
