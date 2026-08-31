@@ -13,15 +13,14 @@ dependencies:
   - pathlib
   - pyyaml
   - pyproj
-  - matplotlib.pyplot
-  - math
+  - matplotlib
   - flake8
   - pytest
   - scikit-learn
   - pip
   - pip:
     - pyGMM==0.8.0
-    - pykrige.ok
+    - pykrige
 
 
 # IF MAKING UPDATE TO THIS SCRIPT:
@@ -33,6 +32,9 @@ dependencies:
 # conda activate project-environment
 # Then fi you're linting:
 # flake8 src
+
+# IF TESTING THE ENV FORM THE FRESH PERSPECTIVE OF PYTEST
+# conda env create -f environment.yml -n test-project-environment
 
 # For the first time setting dependencies (or updating them): Aug 3/4 2026
 # 1. Write code 
