@@ -14,7 +14,7 @@ import yaml
 #import math
 import itertools
 from pyproj import Transformer
-import matplotlib as plt  # Is required for the pyGMM install 
+import matplotlib.pyplot as plt  # Is required for the pyGMM install 
 import pygmm  # Ground motion model package
 # from scipy.spatial.distance import pdist, squareform
 
@@ -47,6 +47,7 @@ class EmpiricalSemivariogram:
         self.anisotropy_treated_PGA: dict[str, float] = {}
 
         self.location_pairs: list[tuple[str]] = []
+        self.station_coords = None
         # This is a dict that looks like:  
         # (stationpair tuple): distance
         self.pairwise_distances: dict[tuple[str, str], float] = {}
@@ -56,6 +57,7 @@ class EmpiricalSemivariogram:
         self.station_variance: dict[tuple[str, str], list[float, float]] = {}
 
         self.cov_model = None
+        self.C = None
 
     # @Brief: This function will take the cleaned dataframe and return location pairs and distances.
     # I enter this function with only the dataframe filtered to our target earthquake. 
@@ -100,7 +102,8 @@ class EmpiricalSemivariogram:
             distance = pairwise_distance(station_coords[station1], station_coords[station2])
             self.pairwise_distances[(station1, station2)] = distance
         print(f"Some location Pairs: {self.location_pairs[:5]}")
-        return self.location_pairs
+        self.station_coords = station_coords
+        return self.station_coords
 
     def construct_GMM(self) -> dict[str, float]:
         # I chose to use the ChiouYoungs2014 model based on a quick trade-study-esque process
@@ -185,6 +188,7 @@ class EmpiricalSemivariogram:
     def anisotropy(self):
         # Be sure to use outlier_treated_PGA
         # though the semivariograms in MY literature are assumed (and proven) to be isotropic
+        self.anisotropy_treated_PGA = self.outlier_treated_PGA  # Placeholder
         return self.anisotropy_treated_PGA
 
     def trend(self):
@@ -226,10 +230,11 @@ class EmpiricalSemivariogram:
             for station_1, station_2 in location_pairs_lagged:
                 log_PGA_predicted_station1 = np.log(self.anisotropy_treated_PGA[station_1])
                 log_PGA_predicted_station2 = np.log(self.anisotropy_treated_PGA[station_2])
-
+                
+                pair_variance = self.station_variance[(station_1, station_2)]
                 residuals_sum.append((
-                    (self.log_PGA_trues[station_1] - log_PGA_predicted_station1) / self.station_variance[station_1],
-                    (self.log_PGA_trues[station_2] - log_PGA_predicted_station2) / self.station_variance[station_2]
+                    (self.log_PGA_trues[station_1] - log_PGA_predicted_station1) / pair_variance[0],
+                    (self.log_PGA_trues[station_2] - log_PGA_predicted_station2) / pair_variance[1]
                 ))
 
             sqrd_differences = [
@@ -248,7 +253,7 @@ class EmpiricalSemivariogram:
 
         return self.semivariogram
 
-    def sill_and_range(self):
+    def sill_and_range(self):  # Section admittedly needs more study work. 
         lags = np.array([point[0] for point in self.semivariogram])
         gammas = np.array([point[1] for point in self.semivariogram])
         Ns = np.array([point[2] for point in self.semivariogram])
@@ -305,9 +310,43 @@ class EmpiricalSemivariogram:
         # semivari = a(1 - p(h))
         # a - sill
         # p(h) - correlation coefficient between Z_u and Z_u+h (location 1 and location 2) 
-        self.cov_model = None
-        pass
+        # Note, the correlation coefficient, p(h) = COV(Z_u , Z_u+h) / (sqrt(VAR(Z_u))*sqrt(VAR(Z_u+h)))
+        # So to isolate the covariance model for pairs at this lag, isolate COV
+        # COV = p(h) * (sqrt(VAR(Z_u)) * sqrt(VAR(Z_u+h)))
+        # Recal VAR(Z_u) is a (as I defined it before).
+        # Under second order stationarity (intrinsic stationarity) (which the text assumes), 
+        # VAR doesn't depend on location
+        # We have COV = p(h) * (sqrt(a) * sqrt(a))
+        # We have COV = p(h) * a
 
+        # 1 - (semivari / a) = p(h)
+        # a(1 - (semivari / a)) = COV
+        if self.cov_model is None:
+            self.sill_and_range()
+
+        a = self.cov_model['a']
+        b = self.cov_model['b']
+
+        n = len(self.station_ids)
+        C = np.zeros((n, n))
+
+        for i, station_i in enumerate(self.station_ids):
+            for j, station_j in enumerate(self.station_ids):
+                if i == j:
+                    C[i, j] = a  # h = 0 -> Cov = a
+                    continue
+                
+                # Determining if this pair ordering is in the dict.
+                pair = (station_i, station_j) if (station_i, station_j) in self.pairwise_distances \
+                    else (station_j, station_i) 
+                h = self.pairwise_distances[pair]  # If not, try reverse order
+                C[i, j] = a * np.exp(-3 * h / b)
+
+        self.cov_model['C'] = C
+        self.C = C
+        print(f"C, the cov model:\n{C}")
+        return C
+      
 
 class PlotEmpiricalSemivariogram:  # I will figure this out later.
     def __init__(self, data_object):

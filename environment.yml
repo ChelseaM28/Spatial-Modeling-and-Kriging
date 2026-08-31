@@ -13,7 +13,7 @@ dependencies:
   - pathlib
   - pyyaml
   - pyproj
-  - matplotlib
+  - matplotlib.pyplot
   - math
   - flake8
   - pytest
@@ -21,6 +21,7 @@ dependencies:
   - pip
   - pip:
     - pyGMM==0.8.0
+    - pykrige.ok
 
 
 # IF MAKING UPDATE TO THIS SCRIPT:
