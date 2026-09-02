@@ -8,8 +8,8 @@
 
 ---
 # Firstly, lag interval and bin width.
-
-lag_interval: null
-bin_width: null
+# units in km
+lag_interval: 1.8 
+bin_width: 1.5
 
 ...

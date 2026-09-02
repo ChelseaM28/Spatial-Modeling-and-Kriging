@@ -35,6 +35,7 @@ dependencies:
 
 # IF TESTING THE ENV FORM THE FRESH PERSPECTIVE OF PYTEST
 # conda env create -f environment.yml -n test-project-environment
+# and read instructions to test. Remember to update original env and deactivate the test
 
 # For the first time setting dependencies (or updating them): Aug 3/4 2026
 # 1. Write code 

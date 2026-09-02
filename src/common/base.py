@@ -39,19 +39,5 @@ class Preprocessing:
         location_pairs = None  # Will need to update the location pairs
         return self.GMM_predictions, location_pairs  
 
-    def pairwise_distance_computation(self):  # I might not use this 
-        for site_pair in self.site_pairs:
-            distance = None  # Some computation to perform here 
-            self.site_pair_lag_distances[site_pair] = distance
-        # This method needs to determine the distances (lag distances, h) between stations.
-        return self.site_pair_lag_distances
 
 
-class Plotting:
-    def __init__(self, passed_data):
-        self.passed_data = passed_data
-
-    def plot_passed_data(self):
-        # some function using the passed data. Will be used for ALL graphs, not just semivoriogram.
-        # if this adds unnecessary complexity, I will not use this.
-        pass

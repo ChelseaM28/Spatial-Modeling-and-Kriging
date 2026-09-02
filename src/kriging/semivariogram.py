@@ -6,7 +6,7 @@
 #               computing and plotting the empirical semivariogram.
 # * - * - * - * - * - * - * - * - * - * - * - * - * - * - * -
 
-from common.base import Plotting, Preprocessing
+from common.base import Preprocessing
 from pathlib import Path
 from scipy.optimize import curve_fit
 import numpy as np
@@ -86,7 +86,7 @@ class EmpiricalSemivariogram:
         # I'm admittedly not very familiar with these sorts of distance calculations, so this
         # next pairwise distance section here is moreso copy paste/tutorial at the moment.
         transformer = Transformer.from_crs("EPSG:4326", "EPSG:32610", always_xy=True)
- 
+
         station_coords: dict[int, tuple[float, float]] = {}
         for station_id, info in station_information.items():
             # TODO: Need to update this.
@@ -94,10 +94,16 @@ class EmpiricalSemivariogram:
             lat, lon = info[1], info[2]
             easting, northing = transformer.transform(lon, lat)
             station_coords[station_id] = (easting, northing)
- 
+
+            # The true, observed PGA at this station (as opposed to the GMM-predicted PGA
+            # built later in construct_GMM). Logged here to line up with log_PGA_predicted
+            # used in compute_empirical_semivariogram's residual calculation.
+            true_pga = info[3]
+            self.log_PGA_trues[station_id] = np.log(true_pga)
+
         def pairwise_distance(coord1: tuple[float, float], coord2: tuple[float, float]) -> float:
             return float(np.sqrt((coord1[0] - coord2[0]) ** 2 + (coord1[1] - coord2[1]) ** 2))
-       
+    
         for station1, station2 in self.location_pairs:
             distance = pairwise_distance(station_coords[station1], station_coords[station2])
             self.pairwise_distances[(station1, station2)] = distance
@@ -176,13 +182,41 @@ class EmpiricalSemivariogram:
         pass
 
     def outliers(self) -> tuple[dict[str, float], list[tuple[str, str]]]:
-        # It looks odd, but the PRIOR location pairs are used to UPDATED
-        self.outlier_treated_PGA, self.location_pairs = Preprocessing.detect_outliers(
-            self.data_object, self.location_pairs, self.initial_PGA
-            )
-        # NOTE: This is already a function in the preprocessing class. 
-        # However, I might be moving the code here instead and getting rid of 
-        # the preprocessing class. Need to think of downstream effects of this though.
+        # I will not use a box plot/histogram to CONFIRM outliers. 
+        # Such tools should only be used as visual aids. Instead, I will perform an IQR or Z-Score test.
+        self.GMM_predictions = {}
+        for (station_1, station_2), (pga_1, pga_2) in self.initial_PGA.items():
+            self.GMM_predictions[station_1] = pga_1
+            self.GMM_predictions[station_2] = pga_2
+
+        station_ids_ordered = list(self.GMM_predictions.keys())
+        pga_array = np.array([self.GMM_predictions[sid] for sid in station_ids_ordered])
+
+        # Calculate Q1, Q3, and IQR
+        Q1 = np.percentile(pga_array, 25)
+        Q3 = np.percentile(pga_array, 75)
+        IQR = Q3 - Q1
+
+        # Define bounds
+        lower_bound = Q1 - 1.5 * IQR
+        upper_bound = Q3 + 1.5 * IQR
+
+        # Detect outliers
+        mask = (pga_array < lower_bound) | (pga_array > upper_bound)
+        outliers = pga_array[mask]
+        print(f"Outliers based on IQR test: {outliers}.\nRemoving...")
+        # I need to decide HOW to decide whether to remove outliers. 
+        # I can remove them by default for now, though 'remove by default' is not best practice.
+        outlier_station_ids = {sid for sid, is_outlier in zip(station_ids_ordered, mask) if is_outlier}
+        self.outlier_treated_PGA = {
+            sid: val for sid, val in self.GMM_predictions.items() if sid not in outlier_station_ids
+        }
+        # Unfortunately, the data structure is likely incorrect. Lists.. dicts... loops. Not correct yet.
+        location_pairs = [
+            (s1, s2) for s1, s2 in self.location_pairs
+            if s1 not in outlier_station_ids and s2 not in outlier_station_ids
+        ]
+        self.location_pairs = location_pairs
         return self.outlier_treated_PGA, self.location_pairs
 
     def anisotropy(self):
@@ -210,7 +244,7 @@ class EmpiricalSemivariogram:
             # how many lag intervals fit into this distance
             nearest_multiple = round(distance / self.lag_interval)
             # assign this pair to a lag distance by snapping to the rounded value
-            lag_center = nearest_multiple * self.lag_interval  # will = 2 in config. from lit.
+            lag_center = nearest_multiple * self.lag_interval  # will = 1.9 in config. from lit.
 
             # if the station is within specified width
             if abs(distance - lag_center) <= half_width:

@@ -19,6 +19,8 @@ from data_scripts.data_handling import DataHandler
 
 # ========= Data Cleaning Testing ========
 
+# TODO: Need to restructure to determine which individual asserts are passing/failing.
+
 data_path = Path(__file__).resolve().parent.parent / "data" / "original.csv"
 columns = ['earthquake_name', 'station_name', 'station_id__no.', 
             'station_latitude', 'station_longitude', 'joyner-boore_dist._(km)',
@@ -45,16 +47,18 @@ class SemivariogramCheck(EmpiricalSemivariogram):
         super().__init__(clean_data) 
 
 def test_semivariogram():
-    location_checker = SemivariogramCheck()
-    assert len(location_checker.construct_location_pairs()) > 4
+    test_obj = SemivariogramCheck()
+    assert len(test_obj.construct_location_pairs()) > 4
     # or maybe test for no negative PGA values or some other value checker
-    assert len(location_checker.construct_GMM()) > 4
-    # Then assert outliers ... 
-    # Then assert empirical semivariogram...
-
-'''def test_construct_GMM():
-    gmm_checker = SemivariogramCheck()
-    initial_PGA_keys = gmm_checker.construct_GMM()
-    assert len(list(initial_PGA_keys.keys())) > 4'''
-
+    assert len(test_obj.construct_GMM()) > 4
+    
+    outlier_treated_PGA, location_pairs = test_obj.outliers()
+    surviving_stations = set(outlier_treated_PGA.keys())
+    pairs_stations = set(s for pair in location_pairs for s in pair)
+    assert pairs_stations.issubset(surviving_stations)
+    
+    pga_values_tested = test_obj.anisotropy()
+    # Once this function works, will need to test it here
+    
+    assert len(test_obj.compute_empirical_semivariogram()) > 4
 

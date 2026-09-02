@@ -7,7 +7,8 @@
 # * - * - * - * - * - * - * - * - * - * - * - * - * - * - * -
 
 from pykrige.ok import OrdinaryKriging
-
+from sklearn.model_selection import LeaveOneOut
+import numpy as np
 
 class OrdKriging:
     def __init__(self, a, b, station_coords, PGA_values):
@@ -38,7 +39,25 @@ class OrdKriging:
 
     def LOO_cross_validation(self):
         # Will need to perform punctual kriging here.
-        # Add a print statement or diagram for the LOOCV result.
-        pass
+        station_ids = list(self.station_coords.keys())
+        x = np.array([self.station_coords[sid][0] for sid in station_ids])
+        y = np.array([self.station_coords[sid][1] for sid in station_ids])
+        z = np.array([self.PGA_values[sid] for sid in station_ids])
+        loo = LeaveOneOut()
+        predictions = []
+        actuals = []
+
+        for train_idx, test_idx in loo.split(x):
+            x_train, y_train, z_train = x[train_idx], y[train_idx], z[train_idx]
+            x_test, y_test, z_test = x[test_idx], y[test_idx], z[test_idx]
+
+            OK = OrdinaryKriging(x_train, y_train, z_train,
+                                variogram_model="exponential",
+                                variogram_parameters={'sill': self.a, 'range': self.b, 'nugget': 0})
+            z_pred, ss_pred = OK.execute("points", x_test, y_test)
+
+            predictions.append(z_pred[0])
+            actuals.append(z_test[0])
+        return predictions, actuals
 
 # Kriging Docs: https://geostat-framework.readthedocs.io/projects/pykrige/en/stable/index.html

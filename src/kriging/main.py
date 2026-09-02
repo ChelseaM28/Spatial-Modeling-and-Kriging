@@ -20,7 +20,13 @@ class Main:
 
         # This also updates self.location_pairs
         station_coords = semivariogram_obj.construct_location_pairs()
+
+        # TODO: Later, I will ensure I can have multiple objects, 
+        # likely one for each semivariogram model. This means I'll need to 
+        # either pass in the model type I want or set it up in the config.
+        # Right now I'm only constructing the exponential model.
         semivariogram_obj.construct_GMM()  # This updates initial_PGA
+        
         # These 2 methods may not be removed, as the code depends on the values of these
         # functions which update in this expected order.
         semivariogram_obj.outliers()  # This updates outlier_treated_PGA, self.updated_location_pairs
@@ -37,10 +43,10 @@ class Main:
 
         krig = OrdKriging(a_fit, b_fit, station_coords, pga_values)
 
-        LOOCV_result = krig.LOO_cross_validation()
+        predictions, actuals = krig.LOO_cross_validation()
 
-        print(f"LOOCV Result:\n{LOOCV_result}")
-        return LOOCV_result
+        print(f"LOOCV Result [PREDICTION | ACTUAL]:\n{list(zip(predictions, actuals))}")
+        return predictions, actuals
 
     
         
