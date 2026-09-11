@@ -5,9 +5,11 @@
 # Description : This script will run each step of the kriging process.
 # * - * - * - * - * - * - * - * - * - * - * - * - * - * - * -
 
-from base.data_handling import DataHandler
-from semivariogram import EmpiricalSemivariogram
-from kriging import OrdKriging
+from pathlib import Path
+from data_scripts.data_handling import DataHandler
+from kriging.semivariogram import EmpiricalSemivariogram
+from kriging.kriging import OrdKriging
+import csv
 
 class Main:
     def __init__(self, filepath: str):
@@ -29,7 +31,11 @@ class Main:
         
         # These 2 methods may not be removed, as the code depends on the values of these
         # functions which update in this expected order.
-        semivariogram_obj.outliers()  # This updates outlier_treated_PGA, self.updated_location_pairs
+        # This updates outlier_treated_PGA
+        outlier_treated_PGA, _ = semivariogram_obj.outliers()  
+
+        # I also need to update the location coordinates (not just location pairs) 
+        station_coords = {sid: coord for sid, coord in station_coords.items() if sid in outlier_treated_PGA}
         pga_values = semivariogram_obj.anisotropy()  # Updates PGA information once again
 
         semivariogram_obj.compute_empirical_semivariogram()
@@ -43,10 +49,24 @@ class Main:
 
         krig = OrdKriging(a_fit, b_fit, station_coords, pga_values)
 
-        predictions, actuals = krig.LOO_cross_validation()
+        predictions, actuals, variances = krig.LOO_cross_validation()
 
-        print(f"LOOCV Result [PREDICTION | ACTUAL]:\n{list(zip(predictions, actuals))}")
-        return predictions, actuals
+        results = list(zip(predictions, actuals, variances))
+        #print(f"LOOCV Result [PREDICTION | ACTUAL | VARIANCE]:\n{results}")
+        print(f"Length of results: {len(results)}")
+        output_csv_path = Path(__file__).resolve().parent.parent.parent / "outputs" / "loocv_results.csv"
+        with open(output_csv_path, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["prediction", "actual", "variance"])
+            writer.writerows(results)
+        final_message = f"LOOCV results saved to {output_csv_path}"
+        return final_message
 
-    
-        
+def run():
+    data_path = Path(__file__).resolve().parent.parent.parent / "data" / "original.csv"
+    runner = Main(filepath=str(data_path))
+    return runner.main()  # returns predictions, actuals, & variances
+
+
+if __name__ == "__main__":
+    run()

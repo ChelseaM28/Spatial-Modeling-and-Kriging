@@ -1,5 +1,6 @@
 # filename: pyproject.toml
 # This file should define where to find files, especially useful for cross-project module imports
+# use pip install -e . whenever proejct structure changes
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
@@ -18,3 +19,6 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src", "config"]
+
+[project.scripts]
+run-kriging = "kriging.main:run"

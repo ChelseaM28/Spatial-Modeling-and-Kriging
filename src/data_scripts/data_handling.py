@@ -6,6 +6,7 @@
 # * - * - * - * - * - * - * - * - * - * - * - * - * - * - * -
 
 import pandas as pd
+from pathlib import Path
 
 class DataHandler:
     def __init__(self, filepath):
@@ -13,19 +14,21 @@ class DataHandler:
         self.dataframe = pd.read_csv(filepath, low_memory=False)
         self.mini_dataframe = self.dataframe.head(10)
         self.filtered = None
-        self.output_path = "/workspaces/Spatial-Geostatistics-Analysis/data/raw/processed"
+        self.output_path = Path(__file__).resolve().parent.parent.parent / "outputs"
 
     def clean_data(self, dataframe):
         # Figure how to handle missing data and data types. No outlier detection in this step.
         self.dataframe = dataframe.dropna()
         self.dataframe.columns = self.dataframe.columns.str.strip().str.lower().str.replace(' ', '_', regex=True)   
-        print("ACTUAL COLUMNS:", self.dataframe.columns.tolist()[15])
+        self.dataframe = self.dataframe.drop(['unused_column', 'd'], axis=1)
+        print("ACTUAL COLUMNS:", self.dataframe.columns.tolist()[:15])
         self.dataframe = self.dataframe.astype(
             {'earthquake_name': str, 'station_name': str, 'station_id__no.': str, 
             'station_latitude': float, 'station_longitude': float, 'joyner-boore_dist._(km)': float,
             'rx': float, 'clstd_(km)': float, 'dip_(deg)': float, 'earthquake_magnitude': float, 'magnitude_type': str,
             'vs30_(m/s)_selected_for_analysis': float, 'epid_(km)': float, 'pga_(g)': float}
             )  # EpiD is 'epicenter distance.' 
+        self.dataframe = self.dataframe[self.dataframe['station_id__no.'] != '-999']
         # I believe these are all the columns I need, though I may update it.
         return self.dataframe
 
@@ -37,7 +40,7 @@ class DataHandler:
         return self.tested_cleaned_data
 
     def save_cleaned_to_json(self):
-        self.dataframe.to_json(self.output_path + "/cleaned_data.json", orient='records', lines=True)
+        self.dataframe.to_json(self.output_path / "cleaned_data.json", orient='records', lines=True)
     
     # @Brief: This function will find the earthquake that has been captured by the most stations.
     # It will return the earthquake ID and the number of stations reporting data.
@@ -54,7 +57,7 @@ class DataHandler:
         return self.filtered
 
     def save_filtered_to_json(self):
-        self.filtered.to_json(self.output_path + "/filtered_data.json", orient='records', lines=True)
+        self.filtered.to_json(self.output_path / "filtered_data.json", orient='records', lines=True)
 
     def clean_filter_and_save(self):
         self.dataframe = self.clean_data(self.dataframe)

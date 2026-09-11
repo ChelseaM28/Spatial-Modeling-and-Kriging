@@ -6,7 +6,6 @@
 #               computing and plotting the empirical semivariogram.
 # * - * - * - * - * - * - * - * - * - * - * - * - * - * - * -
 
-from common.base import Preprocessing
 from pathlib import Path
 from scipy.optimize import curve_fit
 import numpy as np
@@ -104,6 +103,11 @@ class EmpiricalSemivariogram:
         def pairwise_distance(coord1: tuple[float, float], coord2: tuple[float, float]) -> float:
             return float(np.sqrt((coord1[0] - coord2[0]) ** 2 + (coord1[1] - coord2[1]) ** 2))
     
+        for sid, (x, y) in station_coords.items():
+            if not (np.isfinite(x) and np.isfinite(y)):
+                print(f"BAD COORDINATE for station {sid}: ({x}, {y})")
+
+        print("\n\nFOUND ALL BAD COORDINATES.\n\n")
         for station1, station2 in self.location_pairs:
             distance = pairwise_distance(station_coords[station1], station_coords[station2])
             self.pairwise_distances[(station1, station2)] = distance
@@ -112,6 +116,7 @@ class EmpiricalSemivariogram:
         return self.station_coords
 
     def construct_GMM(self) -> dict[str, float]:
+        print("\n\nConstructing GMM model...")
         # I chose to use the ChiouYoungs2014 model based on a quick trade-study-esque process
         station_params = {}
         vs30 = 'vs30_(m/s)_selected_for_analysis'
@@ -182,6 +187,7 @@ class EmpiricalSemivariogram:
         pass
 
     def outliers(self) -> tuple[dict[str, float], list[tuple[str, str]]]:
+        print("\n\nPerforming outlier detection...")
         # I will not use a box plot/histogram to CONFIRM outliers. 
         # Such tools should only be used as visual aids. Instead, I will perform an IQR or Z-Score test.
         self.GMM_predictions = {}
@@ -204,7 +210,7 @@ class EmpiricalSemivariogram:
         # Detect outliers
         mask = (pga_array < lower_bound) | (pga_array > upper_bound)
         outliers = pga_array[mask]
-        print(f"Outliers based on IQR test: {outliers}.\nRemoving...")
+        print(f"Outlier PGA values based on IQR test: {outliers}.\nRemoved Outliers. Updated location pairs.")
         # I need to decide HOW to decide whether to remove outliers. 
         # I can remove them by default for now, though 'remove by default' is not best practice.
         outlier_station_ids = {sid for sid, is_outlier in zip(station_ids_ordered, mask) if is_outlier}
@@ -230,6 +236,7 @@ class EmpiricalSemivariogram:
         pass
 
     def compute_empirical_semivariogram(self):
+        print("\n\nComputing empirical semivariogram...")
         # Be sure to use anisotropy_treated_PGA values
         # Bins are centered at multiples of self.lag_interval (h), each with
         # half-width self.bin_width / 2 (δh/2), per Baker eq. 4 / bin definition.
@@ -240,6 +247,8 @@ class EmpiricalSemivariogram:
 
         for station_1, station_2 in self.location_pairs:
             distance = self.pairwise_distances[(station_1, station_2)]
+
+            #print("lag_interval:", self.lag_interval, type(self.lag_interval))
 
             # how many lag intervals fit into this distance
             nearest_multiple = round(distance / self.lag_interval)
@@ -288,9 +297,13 @@ class EmpiricalSemivariogram:
         return self.semivariogram
 
     def sill_and_range(self):  # Section admittedly needs more study work. 
+        print("\n\nFitting sill and range via WLS...")
         lags = np.array([point[0] for point in self.semivariogram])
         gammas = np.array([point[1] for point in self.semivariogram])
         Ns = np.array([point[2] for point in self.semivariogram])
+
+        nonzero_mask = lags > 0
+        lags, gammas, Ns = lags[nonzero_mask], gammas[nonzero_mask], Ns[nonzero_mask]
 
         weights = Ns / lags**2          # Cressie-style WLS weights
         sigma = 1 / np.sqrt(weights)    # curve_fit wants sigma, not weight, so invert
@@ -307,6 +320,7 @@ class EmpiricalSemivariogram:
         )
 
         self.cov_model = {'a': a_fit, 'b': b_fit}
+        print(f"Fitted sill (a): {a_fit} km, Fitted range (b): {b_fit} km")
         return a_fit, b_fit
 
     # semivariogram functional forms to create "a CONTINUOUS function... fitted [on the finite]
@@ -339,6 +353,7 @@ class EmpiricalSemivariogram:
     # the functional form to be chosen, not just lag distance and bin width!!
 
     def choose_covariance_model(self, semivar_values):
+        print("\n\nChoosing covariance model...")
         # "The covariance structure of Z (location realizations) is completely specified by the 
         # semivariogram function and the sill and the range of the semivariogram." Baker Pg 8
         # semivari = a(1 - p(h))
@@ -385,11 +400,10 @@ class EmpiricalSemivariogram:
 class PlotEmpiricalSemivariogram:  # I will figure this out later.
     def __init__(self, data_object):
         self.data_object = data_object
-        self.passed_to_plotting_class = None
 
     def plot_empirical_semivariogram(self):
-        #self.passed_to_plotting_class = some operation
-        Plotting(self.passed_to_plotting_class).plot_passed_data()
+        #need some code here
+        
         # This fig, ax thing will be deleted. 
         # It is to silence the flake8 linting concerns about plt not being used.
         fig, ax = plt.subplots() 

@@ -12,8 +12,8 @@ import numpy as np
 
 class OrdKriging:
     def __init__(self, a, b, station_coords, PGA_values):
-        self.a = a
-        self.b = b
+        self.sill = a
+        self.range = b
         self.station_coords = station_coords  
         self.PGA_values = PGA_values  
 
@@ -21,6 +21,7 @@ class OrdKriging:
     # kriging_neighborhood() and block_kriging() from the literature. (Thank goodness) 
 
     def punctual_kriging(self, target_x, target_y):
+        print('\n\nPerforming punctual kriging...')
         station_ids = list(self.station_coords.keys())
         x = [self.station_coords[sid][0] for sid in station_ids]
         y = [self.station_coords[sid][1] for sid in station_ids]
@@ -29,15 +30,16 @@ class OrdKriging:
         OK = OrdinaryKriging(
             x, y, z,
             variogram_model="exponential",
-            variogram_parameters={'sill': self.a, 'range': self.b, 'nugget': 0},
+            variogram_parameters={'sill': self.sill, 'range': self.range, 'nugget': 0},
             verbose=False,
             enable_plotting=False
         )
-
+        print(f"sill: {self.sill}, range: {self.range}")
         z_pred, ss_pred = OK.execute("points", target_x, target_y)
         return z_pred, ss_pred
 
     def LOO_cross_validation(self):
+        print('\n\nPerforming Leave-One-Out Cross-Validation...')
         # Will need to perform punctual kriging here.
         station_ids = list(self.station_coords.keys())
         x = np.array([self.station_coords[sid][0] for sid in station_ids])
@@ -46,6 +48,7 @@ class OrdKriging:
         loo = LeaveOneOut()
         predictions = []
         actuals = []
+        variances = []
 
         for train_idx, test_idx in loo.split(x):
             x_train, y_train, z_train = x[train_idx], y[train_idx], z[train_idx]
@@ -53,11 +56,13 @@ class OrdKriging:
 
             OK = OrdinaryKriging(x_train, y_train, z_train,
                                 variogram_model="exponential",
-                                variogram_parameters={'sill': self.a, 'range': self.b, 'nugget': 0})
+                                # I need to work out the nugget
+                                variogram_parameters={'sill': self.sill, 'range': self.range, 'nugget': 0})
             z_pred, ss_pred = OK.execute("points", x_test, y_test)
 
             predictions.append(z_pred[0])
             actuals.append(z_test[0])
-        return predictions, actuals
+            variances.append(ss_pred[0])
+        return predictions, actuals, variances
 
 # Kriging Docs: https://geostat-framework.readthedocs.io/projects/pykrige/en/stable/index.html
