@@ -51,6 +51,7 @@ class EmpiricalSemivariogram:
         # (stationpair tuple): distance
         self.pairwise_distances: dict[tuple[str, str], float] = {}
         self.station_ids = []
+        self.station_log_std: dict[str, float] = {}
 
         self.semivariogram = []  # This is the experimental variogram referenced in literature.
         self.station_variance: dict[tuple[str, str], list[float, float]] = {}
@@ -154,6 +155,10 @@ class EmpiricalSemivariogram:
             self.initial_PGA[(station1, station2)] = [model1.pga, model2.pga]
             # I use a list instead of a tuple because I don't think ndarray will handl tuples properly.
             log_station_std.append([model1.ln_std_pga, model2.ln_std_pga])
+            
+            # trying to store the log this way
+            self.station_log_std[station1] = model1.ln_std_pga
+            self.station_log_std[station2] = model2.ln_std_pga
 
         print("\n\nCOMPLETED RUNNING GMM MODEL.")
 
@@ -231,13 +236,25 @@ class EmpiricalSemivariogram:
         self.anisotropy_treated_PGA = self.outlier_treated_PGA  # Placeholder
         return self.anisotropy_treated_PGA
 
+    def compute_station_residuals(self) -> dict[str, float]:
+        print("\n\nComputing per-station standardized residuals...")
+        self.station_residuals = {}
+        for station in self.anisotropy_treated_PGA:
+            log_true = self.log_PGA_trues[station]
+            log_predicted = np.log(self.anisotropy_treated_PGA[station])
+            std = self.station_log_std[station]
+            self.station_residuals[station] = (log_true - log_predicted) / std
+        return self.station_residuals
+
     def trend(self):
         # This will also not be checked in v1
         pass
 
     def compute_empirical_semivariogram(self):
         print("\n\nComputing empirical semivariogram...")
-        # Be sure to use anisotropy_treated_PGA values
+        # Uses self.station_residuals (standardized log-residuals), computed once
+        # per station in compute_station_residuals() — no more per-pair recomputation here.
+
         # Bins are centered at multiples of self.lag_interval (h), each with
         # half-width self.bin_width / 2 (δh/2), per Baker eq. 4 / bin definition.
 
@@ -246,38 +263,28 @@ class EmpiricalSemivariogram:
         half_width = self.bin_width / 2
 
         for station_1, station_2 in self.location_pairs:
+            if station_1 not in self.station_residuals or station_2 not in self.station_residuals:
+                continue  # station was filtered out post-outlier-treatment; skip
             distance = self.pairwise_distances[(station_1, station_2)]
-
-            #print("lag_interval:", self.lag_interval, type(self.lag_interval))
 
             # how many lag intervals fit into this distance
             nearest_multiple = round(distance / self.lag_interval)
             # assign this pair to a lag distance by snapping to the rounded value
-            lag_center = nearest_multiple * self.lag_interval  # will = 1.9 in config. from lit.
+            lag_center = nearest_multiple * self.lag_interval
 
             # if the station is within specified width
             if abs(distance - lag_center) <= half_width:
-                ''' What setdefault does:
-                if lag_center not in lag_groups:
-                    lag_groups[lag_center] = []
-                    lag_groups[lag_center].append((station_1, station_2))
-                '''
                 lag_groups.setdefault(lag_center, []).append((station_1, station_2))
-            # else: distance falls in the gap between bins (possible when bin_width < lag_interval)
-            # and is simply not used in any semivariogram point, per the paper's definition.
+            # else: distance falls in the gap between bins and is simply not used.
 
-        # Step 2: compute semivari(h) for each lag bin independently.
+        # compute semivari(h) for each lag bin independently.
         self.semivariogram = []
         for lag_distance, location_pairs_lagged in sorted(lag_groups.items()):
             residuals_sum = []  # local to this lag, not self.residuals_sum
             for station_1, station_2 in location_pairs_lagged:
-                log_PGA_predicted_station1 = np.log(self.anisotropy_treated_PGA[station_1])
-                log_PGA_predicted_station2 = np.log(self.anisotropy_treated_PGA[station_2])
-                
-                pair_variance = self.station_variance[(station_1, station_2)]
                 residuals_sum.append((
-                    (self.log_PGA_trues[station_1] - log_PGA_predicted_station1) / pair_variance[0],
-                    (self.log_PGA_trues[station_2] - log_PGA_predicted_station2) / pair_variance[1]
+                    self.station_residuals[station_1],
+                    self.station_residuals[station_2]
                 ))
 
             sqrd_differences = [
@@ -296,8 +303,8 @@ class EmpiricalSemivariogram:
 
         return self.semivariogram
 
-    def sill_and_range(self):  # Section admittedly needs more study work. 
-        print("\n\nFitting sill and range via WLS...")
+    def sill_and_range(self, n_iterations=4):
+        print("\n\nFitting sill and range via WLS (iterative Cressie weighting)...")
         lags = np.array([point[0] for point in self.semivariogram])
         gammas = np.array([point[1] for point in self.semivariogram])
         Ns = np.array([point[2] for point in self.semivariogram])
@@ -305,22 +312,28 @@ class EmpiricalSemivariogram:
         nonzero_mask = lags > 0
         lags, gammas, Ns = lags[nonzero_mask], gammas[nonzero_mask], Ns[nonzero_mask]
 
-        weights = Ns / lags**2          # Cressie-style WLS weights
-        sigma = 1 / np.sqrt(weights)    # curve_fit wants sigma, not weight, so invert
-
-        # initial guesses: a ~ sill ~ variance of Z_u; b ~ range ~ some fraction of max lag
-        # a0: rough guess at Var(Z_u), used to seed the sill.
-        # b0: rough guess at decay distance, used to seed the range before curve fit.
-        a0 = np.var(list(self.anisotropy_treated_PGA.values()))
+        # Initial guesses: a ~ sill ~ variance of Z_u; b ~ range ~ some fraction of max lag
+        a0 = np.var(list(self.station_residuals.values()))
         b0 = lags.max() / 3
 
-        (a_fit, b_fit), _ = curve_fit(
-            self.exponential_model, lags, gammas,
-            p0=[a0, b0], sigma=sigma, absolute_sigma=False
-        )
+        a_fit, b_fit = a0, b0  # seed for first iteration
+
+        for iteration in range(n_iterations):
+            # Cressie weights: N(h) / gamma_model(h; current theta)^2
+            gamma_model_current = self.exponential_model(lags, a_fit, b_fit)
+            # guard against div-by-zero at h -> 0 (gamma_model -> 0 there too)
+            gamma_model_current = np.maximum(gamma_model_current, 1e-8)
+            weights = Ns / gamma_model_current**2
+            sigma = 1 / np.sqrt(weights)
+
+            (a_fit, b_fit), _ = curve_fit(
+                self.exponential_model, lags, gammas,
+                p0=[a_fit, b_fit], sigma=sigma, absolute_sigma=False
+            )
+            print(f"  iter {iteration}: a={a_fit:.6f}, b={b_fit:.2f}")
 
         self.cov_model = {'a': a_fit, 'b': b_fit}
-        print(f"Fitted sill (a): {a_fit} km, Fitted range (b): {b_fit} km")
+        print(f"Fitted sill (a): {a_fit}, Fitted range (b): {b_fit}")
         return a_fit, b_fit
 
     # semivariogram functional forms to create "a CONTINUOUS function... fitted [on the finite]

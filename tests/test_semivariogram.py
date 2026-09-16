@@ -58,7 +58,9 @@ def test_semivariogram():
     assert pairs_stations.issubset(surviving_stations)
     
     pga_values_tested = test_obj.anisotropy()
-    # Once this function works, will need to test it here
     
+    residuals = test_obj.compute_station_residuals()
+    assert len(residuals) > 4
+
     assert len(test_obj.compute_empirical_semivariogram()) > 4
 
